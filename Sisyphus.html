@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sisyphus CAPTCHA</title>
+    <style>
+        :root {
+            --blue-primary: #4A90E2;
+            --bg-gray: #f9f9f9;
+        }
+
+        body {
+            font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+            background-color: #e9e9e9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        /* CAPTCHA outer frame */
+        .captcha-container {
+            width: 350px;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            border: 1px solid #ccc;
+            user-select: none;
+            position: relative;
+        }
+
+        /* Blue header */
+        .header {
+            background-color: var(--blue-primary);
+            color: white;
+            padding: 24px;
+        }
+
+        .header .title-small { font-size: 14px; margin-bottom: 4px; opacity: 0.9; }
+        .header .title-large { font-size: 24px; font-weight: bold; line-height: 1.2; }
+
+        /* Game area */
+        .game-area {
+            height: 300px; /* fixed height */
+            background-image: url('Background.png'); /* slope from image_0.png */
+            background-size: cover;
+            background-position: bottom left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Boulder */
+        #stone {
+            width: 50px; /* size ref image_1.png */
+            height: 50px;
+            position: absolute;
+            background-image: url('Stone.png'); /* image_1.png */
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: center center;
+            bottom: 10px; /* start position */
+            left: -60px; /* start off-screen in front of Sisyphus */
+        }
+
+        /* Sisyphus */
+        #sisyphus {
+            width: 30px; /* size ref image_2.png */
+            height: 60px;
+            position: absolute;
+            background-image: url('Sisyphus.png'); /* image_2.png */
+            background-size: contain;
+            background-repeat: no-repeat;
+            bottom: 10px; /* start position */
+            left: 10px; /* start position */
+        }
+
+        /* Bottom slider wrapper */
+        .slider-container {
+            height: 40px;
+            background-color: #f0f0f0;
+            border-top: 1px solid #eee;
+            position: relative;
+        }
+
+        /* Slider track */
+        .slider-track {
+            position: absolute;
+            top: 50%;
+            left: 10px;
+            right: 10px;
+            height: 10px;
+            background-color: #d0d0d0;
+            transform: translateY(-50%);
+            border-radius: 5px;
+        }
+
+        /* Slider thumb */
+        .slider-handle {
+            width: 40px;
+            height: 40px;
+            background-color: var(--blue-primary);
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: -20px; /* initial position */
+            cursor: grab;
+            transition: transform 0.1s ease-out;
+        }
+
+        .slider-handle.dragging {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        /* Footer toolbar */
+        .footer {
+            border-top: 1px solid #eee;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .icons { display: flex; gap: 15px; color: #777; font-size: 20px; }
+        .icons span { cursor: pointer; }
+
+        .bgm-credit {
+            margin: 0;
+            padding: 8px 12px 10px;
+            font-size: 10px;
+            line-height: 1.45;
+            color: #888;
+            text-align: left;
+            border-top: 1px solid #eee;
+            word-break: break-all;
+        }
+
+        .verify-btn {
+            background-color: var(--blue-primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            border-radius: 3px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        /* Result overlay */
+        #status-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 100;
+        }
+
+        /* Slightly lighter dim so the downhill roll stays visible behind the message */
+        #status-overlay.verify-roll-back-visible {
+            background: rgba(0,0,0,0.5);
+        }
+
+        /* Hidden loop audio (no controls) */
+        #bg-audio {
+            position: absolute;
+            width: 0;
+            height: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="captcha-container">
+    <div class="header">
+        <div class="title-small">Drag the slider to push the boulder uphill</div>
+        <div class="title-large">Sisyphus CAPTCHA</div>
+        <div class="title-small" style="margin-top:10px;">Day after day, without end</div>
+    </div>
+
+    <div class="game-area">
+        <div id="sisyphus"></div>
+        <div id="stone"></div>
+    </div>
+
+    <div class="slider-container">
+        <div class="slider-track"></div>
+        <div class="slider-handle" id="slider-handle"></div>
+    </div>
+
+    <div class="footer">
+        <div class="icons">
+            <span onclick="initGame()">🔄</span>
+            <span id="mute-toggle" title="Mute / unmute">🎧</span>
+            <span id="info-toggle" role="button" tabindex="0" title="Show or hide credits" aria-expanded="false" aria-controls="bgm-credit">ⓘ</span>
+        </div>
+        <button class="verify-btn" onclick="verify()">Verify</button>
+    </div>
+    <p class="bgm-credit" id="bgm-credit" hidden>
+        <span id="credit-source-line"></span><br>
+        <span id="credit-music-line"></span>
+    </p>
+</div>
+
+<div id="status-overlay">
+    <h2 id="result-title">Verification failed</h2>
+    <p id="result-desc"></p>
+    <button onclick="closeOverlay()" style="padding: 10px 20px; margin-top: 20px;">Try again</button>
+</div>
+
+<!-- Loop BGM: bgm.aac — "Me and the Birds" - Duster (full instrumentals) -->
+<audio id="bg-audio" loop playsinline preload="metadata"></audio>
+
+<script>
+    /** Link to the original Sisyphus CAPTCHA concept / source. */
+    const ORIGINAL_IDEA_URL = 'https://github.com/CS-LX/Inhuman/blob/main/Sisyphus/Sisyphus.html';
+    /** Loop BGM file (same folder): bgm.aac — "Me and the Birds" - Duster (full instrumentals) */
+    const LOOP_AUDIO_URL = 'bgm.aac';
+    const MUSIC_CREDIT_DETAIL = 'Me and the Birds — Duster · bgm.aac';
+    /** At summit, Verify still has this chance to "roll back" (fail) before redirect. */
+    const VERIFY_ROLLBACK_CHANCE = 0.9;
+    /** Duration (ms) for summit verify-fail boulder roll-down behind the overlay. */
+    const VERIFY_ROLLBACK_ANIM_MS = 2400;
+
+    const captchaContainer = document.querySelector('.captcha-container');
+    const gameArea = document.querySelector('.game-area');
+    const stone = document.getElementById('stone');
+    const sisyphus = document.getElementById('sisyphus');
+    const sliderContainer = document.querySelector('.slider-container');
+    const sliderHandle = document.getElementById('slider-handle');
+    const overlay = document.getElementById('status-overlay');
+    const bgAudio = document.getElementById('bg-audio');
+    const muteToggle = document.getElementById('mute-toggle');
+    const creditSourceLine = document.getElementById('credit-source-line');
+    const creditMusicLine = document.getElementById('credit-music-line');
+    const bgmCredit = document.getElementById('bgm-credit');
+    const infoToggle = document.getElementById('info-toggle');
+
+    bgAudio.src = LOOP_AUDIO_URL;
+
+    creditSourceLine.textContent = 'Original idea: ' + ORIGINAL_IDEA_URL;
+    creditMusicLine.textContent = 'Music credit: ' + MUSIC_CREDIT_DETAIL;
+
+    function toggleCreditDetails() {
+        if (bgmCredit.hasAttribute('hidden')) {
+            bgmCredit.removeAttribute('hidden');
+            infoToggle.setAttribute('aria-expanded', 'true');
+        } else {
+            bgmCredit.setAttribute('hidden', '');
+            infoToggle.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    infoToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCreditDetails();
+    });
+
+    infoToggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleCreditDetails();
+        }
+    });
+
+    let isDragging = false;
+    let startX = 0;
+    let sliderValue = 0; // 0-100
+    let rollbackTimer = null;
+    let verifyRollbackAnimId = null;
+    const slopeAngleFactor = 0.5; // ratio of vertical climb speed to horizontal motion
+
+    function cancelVerifyRollbackAnimation() {
+        if (verifyRollbackAnimId !== null) {
+            cancelAnimationFrame(verifyRollbackAnimId);
+            verifyRollbackAnimId = null;
+        }
+    }
+
+    /** Smooth roll-down (slider 100→0) while overlay is visible; eases in like accelerating downhill. */
+    function startVerifyRollbackRollAnimation() {
+        cancelVerifyRollbackAnimation();
+        const from = sliderValue;
+        if (from <= 0) return;
+        const startTime = performance.now();
+        function frame(now) {
+            const t = Math.min(1, (now - startTime) / VERIFY_ROLLBACK_ANIM_MS);
+            const easeIn = t * t;
+            sliderValue = from * (1 - easeIn);
+            updateSisyphusPosition();
+            if (t < 1) {
+                verifyRollbackAnimId = requestAnimationFrame(frame);
+            } else {
+                sliderValue = 0;
+                updateSisyphusPosition();
+                verifyRollbackAnimId = null;
+            }
+        }
+        verifyRollbackAnimId = requestAnimationFrame(frame);
+    }
+
+    // Initialize game
+    function initGame() {
+        sliderValue = 0;
+        isDragging = false;
+        if (rollbackTimer) cancelAnimationFrame(rollbackTimer);
+        cancelVerifyRollbackAnimation();
+        updateSisyphusPosition();
+        overlay.classList.remove('verify-roll-back-visible');
+        overlay.style.display = 'none';
+    }
+
+    // Update Sisyphus and boulder positions
+    function updateSisyphusPosition() {
+        const maxX = captchaContainer.offsetWidth - 40; // slider track length
+        const currentX = (sliderValue / 100) * maxX; // thumb X
+        sliderHandle.style.left = currentX + 'px'; // thumb position
+
+        const areaWidth = gameArea.offsetWidth;
+        const areaHeight = gameArea.offsetHeight;
+
+        // Position Sisyphus and boulder on the slope from sliderValue
+        const sisyphusBaseX = 10;
+        const sisyphusBaseY = 10;
+        const targetX = sisyphusBaseX + (sliderValue / 100) * (areaWidth - 50); // Sisyphus x
+        const targetY = sisyphusBaseY + (sliderValue / 40) * (areaHeight - 50) * slopeAngleFactor; // Sisyphus y
+
+        sisyphus.style.left = targetX + 'px';
+        sisyphus.style.bottom = targetY + 'px';
+
+        // Boulder behind Sisyphus
+        const stoneX = targetX + 15; // to Sisyphus's right (pushing)
+        const stoneY = targetY + 40; // above Sisyphus
+        stone.style.left = stoneX + 'px';
+        stone.style.bottom = stoneY + 'px';
+
+        // Boulder roll
+        const rotation = (sliderValue / 100) * 360 * 3; // full rotations
+        stone.style.transform = `rotate(${rotation}deg)`;
+    }
+
+    // Slider drag
+    sliderHandle.addEventListener('mousedown', handleDragStart);
+    document.addEventListener('mousemove', handleDragOver);
+    document.addEventListener('mouseup', handleDragEnd);
+
+    sliderHandle.addEventListener('touchstart', handleDragStart);
+    document.addEventListener('touchmove', handleDragOver);
+    document.addEventListener('touchend', handleDragEnd);
+
+    function startLoopAudioFromUserGesture() {
+        if (bgAudio.dataset.started === '1') return;
+        bgAudio.play()
+            .then(() => { bgAudio.dataset.started = '1'; })
+            .catch(() => { /* autoplay blocked or missing file */ });
+    }
+
+    function handleDragStart(e) {
+        isDragging = true;
+        startLoopAudioFromUserGesture();
+        if (rollbackTimer) cancelAnimationFrame(rollbackTimer);
+        startX = (e.type === 'touchstart' ? e.touches[0] : e).clientX;
+        sliderHandle.classList.add('dragging');
+    }
+
+    muteToggle.addEventListener('click', () => {
+        bgAudio.muted = !bgAudio.muted;
+        muteToggle.textContent = bgAudio.muted ? '🔇' : '🎧';
+        muteToggle.title = bgAudio.muted ? 'Unmute' : 'Mute';
+    });
+
+    function handleDragOver(e) {
+        if (!isDragging) return;
+        const maxX = captchaContainer.offsetWidth - 20; // slider track length
+        const currentX = (e.type === 'touchmove' ? e.touches[0] : e).clientX;
+        const delta = currentX - startX;
+        // new sliderValue (0-100)
+        let newSliderValue = sliderValue + (delta / maxX) * 100;
+        newSliderValue = Math.min(100, Math.max(0, newSliderValue));
+
+        sliderValue = newSliderValue;
+        startX = currentX;
+        updateSisyphusPosition();
+    }
+
+    function handleDragEnd() {
+        isDragging = false;
+        sliderHandle.classList.remove('dragging');
+        // When drag ends, start rollback
+        rollback();
+    }
+
+    // Auto rollback
+    function rollback() {
+        if (rollbackTimer) cancelAnimationFrame(rollbackTimer);
+        rollbackTimer = requestAnimationFrame(rollbackAnimate);
+    }
+
+    function rollbackAnimate() {
+        if (isDragging) return; // pause rollback while dragging
+
+        // Near summit: trigger roll-back
+        if (sliderValue > 95 && !isDragging) {
+            // 99% chance to roll back
+            const rollbackSuccess = Math.random() < 0.9;
+            if (rollbackSuccess) {
+                // fast roll-back
+                sliderValue -= 2; // -2% per frame, faster than normal drift
+                if (sliderValue < 0) sliderValue = 0;
+                updateSisyphusPosition();
+                rollbackTimer = requestAnimationFrame(rollbackAnimate);
+                return; // skip normal drift
+            } else {
+                // 10% chance to fail
+                return;
+            }
+        } else if (sliderValue > 0) {
+            // normal drift: decrease sliderValue each frame
+            sliderValue -= 0.5; // -0.5% per frame
+            if (sliderValue < 0) sliderValue = 0;
+            updateSisyphusPosition();
+            rollbackTimer = requestAnimationFrame(rollbackAnimate);
+        }
+    }
+
+    // Verify
+    function verify() {
+        if (rollbackTimer) cancelAnimationFrame(rollbackTimer);
+        if (sliderValue > 95 && !isDragging) {
+            if (Math.random() < VERIFY_ROLLBACK_CHANCE) {
+                showResult(
+                    "Verification rolled back",
+                    "Even at the summit, the boulder can still fall. Day after day, without end. Try again."
+                );
+                overlay.classList.add('verify-roll-back-visible');
+                startVerifyRollbackRollAnimation();
+            } else {
+                window.location.href = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+            }
+        } else {
+            showResult("Non-Sisyphus behavior detected", "Day after day, without end. You never reached the summit, or the boulder rolled back. You are not even a qualified Sisyphus, let alone a figure from myth.");
+        }
+    }
+
+    function showResult(title, desc) {
+        overlay.classList.remove('verify-roll-back-visible');
+        document.getElementById('result-title').innerText = title;
+        document.getElementById('result-desc').innerText = desc;
+        overlay.style.display = 'flex';
+    }
+
+    function closeOverlay() {
+        initGame();
+    }
+
+    // Start
+    initGame();
+</script>
+
+</body>
+</html>
