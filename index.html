@@ -136,6 +136,15 @@
             word-break: break-all;
         }
 
+        .bgm-credit a {
+            color: var(--blue-primary);
+            text-decoration: underline;
+        }
+
+        .bgm-credit a:hover {
+            color: #3570c4;
+        }
+
         .verify-btn {
             background-color: var(--blue-primary);
             color: white;
@@ -204,6 +213,7 @@
         <button class="verify-btn" onclick="verify()">Verify</button>
     </div>
     <p class="bgm-credit" id="bgm-credit" hidden>
+        <span id="credit-repo-line"></span><br>
         <span id="credit-source-line"></span><br>
         <span id="credit-music-line"></span>
     </p>
@@ -221,6 +231,8 @@
 <script>
     /** Link to the original Sisyphus CAPTCHA concept / source. */
     const ORIGINAL_IDEA_URL = 'https://github.com/CS-LX/Inhuman/blob/main/Sisyphus/Sisyphus.html';
+    /** This project’s repository. */
+    const THIS_REPO_URL = 'https://github.com/0xNMLSS/Sisyphus-CAPTCHA';
     /** Loop BGM file (same folder): bgm.aac — "Me and the Birds" - Duster (full instrumentals) */
     const LOOP_AUDIO_URL = 'bgm.aac';
     const MUSIC_CREDIT_DETAIL = 'Me and the Birds — Duster · bgm.aac';
@@ -239,11 +251,21 @@
     const bgAudio = document.getElementById('bg-audio');
     const muteToggle = document.getElementById('mute-toggle');
     const creditSourceLine = document.getElementById('credit-source-line');
+    const creditRepoLine = document.getElementById('credit-repo-line');
     const creditMusicLine = document.getElementById('credit-music-line');
     const bgmCredit = document.getElementById('bgm-credit');
     const infoToggle = document.getElementById('info-toggle');
 
     bgAudio.src = LOOP_AUDIO_URL;
+
+    creditRepoLine.textContent = '';
+    creditRepoLine.appendChild(document.createTextNode('This repository: '));
+    const creditRepoAnchor = document.createElement('a');
+    creditRepoAnchor.href = THIS_REPO_URL;
+    creditRepoAnchor.target = '_blank';
+    creditRepoAnchor.rel = 'noopener noreferrer';
+    creditRepoAnchor.textContent = THIS_REPO_URL;
+    creditRepoLine.appendChild(creditRepoAnchor);
 
     creditSourceLine.textContent = 'Original idea: ' + ORIGINAL_IDEA_URL;
     creditMusicLine.textContent = 'Music credit: ' + MUSIC_CREDIT_DETAIL;
