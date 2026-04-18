@@ -17,6 +17,7 @@ Expected alongside `Sisyphus.html`:
 
 | File | Role |
 |------|------|
+| `favicon.svg` | Site icon (browser tab) |
 | `Background.png` | Game area background |
 | `Stone.png` | Boulder sprite |
 | `Sisyphus.png` | Character sprite |
