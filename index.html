@@ -251,9 +251,9 @@
 
 <div class="captcha-container">
     <div class="header">
-        <div class="title-small">Drag the slider to push the boulder uphill</div>
-        <div class="title-large">Sisyphus CAPTCHA</div>
-        <div class="title-small" style="margin-top:10px;">Day after day, without end</div>
+        <div id="header-line-1" class="title-small">Drag the slider to push the boulder uphill</div>
+        <div id="header-line-2" class="title-large">Sisyphus CAPTCHA</div>
+        <div id="header-line-3" class="title-small" style="margin-top:10px;">Day after day, without end</div>
     </div>
 
     <div class="game-area">
@@ -271,8 +271,9 @@
             <span onclick="initGame()">🔄</span>
             <span id="mute-toggle" title="Mute / unmute">🎧</span>
             <span id="info-toggle" role="button" tabindex="0" title="Show or hide credits" aria-expanded="false" aria-controls="bgm-credit">ⓘ</span>
+            <span id="lang-toggle" role="button" tabindex="0" title="Switch language" aria-label="Switch language">中</span>
         </div>
-        <button class="verify-btn" onclick="verify()">Verify</button>
+        <button id="verify-btn" class="verify-btn" onclick="verify()">Verify</button>
     </div>
     <p class="bgm-credit" id="bgm-credit" hidden>
         <span id="credit-repo-line"></span><br>
@@ -284,7 +285,7 @@
 <div id="status-overlay">
     <h2 id="result-title">Verification failed</h2>
     <p id="result-desc"></p>
-    <button onclick="closeOverlay()" style="padding: 10px 20px; margin-top: 20px;">Try again</button>
+    <button id="try-again-btn" onclick="closeOverlay()" style="padding: 10px 20px; margin-top: 20px;">Try again</button>
 </div>
 
 <!-- Loop BGM: bgm.aac — "Me and the Birds" - Duster (full instrumentals) -->
@@ -295,6 +296,60 @@
     const ORIGINAL_IDEA_URL = 'https://github.com/CS-LX/Inhuman/blob/main/Sisyphus/Sisyphus.html';
     /** This project’s repository. */
     const THIS_REPO_URL = 'https://github.com/0xNMLSS/Sisyphus-CAPTCHA';
+    /** Success redirect when language is English (original meme link). */
+    const SUCCESS_URL_EN = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+    /** Success redirect when language is Chinese (matches upstream Sisyphus.html). */
+    const SUCCESS_URL_ZH = 'https://www.bilibili.com/video/BV1GJ411x7h7';
+    const LANG_STORAGE_KEY = 'sisyphus-ui-lang';
+
+    /**
+     * English: current copy. Chinese: text from upstream CS-LX/Inhuman Sisyphus/Sisyphus.html where applicable.
+     * Rollback-at-summit strings have no upstream equivalent; they are translated to match tone.
+     */
+    const I18N = {
+        en: {
+            headerLine1: 'Drag the slider to push the boulder uphill',
+            headerLine2: 'Sisyphus CAPTCHA',
+            headerLine3: 'Day after day, without end',
+            verify: 'Verify',
+            tryAgain: 'Try again',
+            nonSisyphusTitle: 'Non-Sisyphus behavior detected',
+            nonSisyphusDesc: 'Day after day, without end. You never reached the summit, or the boulder rolled back. You are not even a qualified Sisyphus, let alone a figure from myth.',
+            rollbackTitle: 'Verification rolled back',
+            rollbackDesc: 'Even at the summit, the boulder can still fall. Day after day, without end. Try again.',
+            muteTitle: 'Mute / unmute',
+            muteWhenMuted: 'Unmute',
+            muteWhenUnmuted: 'Mute',
+            infoTitle: 'Show or hide credits',
+            langToggleLabel: 'Switch language',
+            langToggleShowEn: 'EN',
+            langToggleShowZh: '中',
+            creditRepoPrefix: 'This repository: ',
+            creditSourcePrefix: 'Original idea: ',
+            creditMusicPrefix: 'Music credit: ',
+        },
+        zh: {
+            headerLine1: '拖动滑块，推石上山',
+            headerLine2: '西西弗斯验证码',
+            headerLine3: '日复一日，永无止境',
+            verify: '验证',
+            tryAgain: '再次尝试',
+            nonSisyphusTitle: '检测到非西西弗斯行为',
+            nonSisyphusDesc: '日复一日，永无止境。石头甚至没有推到山顶，或者它滚回去了。你甚至不是一个合格的西西弗斯，更别说是神话中的神人了。',
+            rollbackTitle: '验证滚回',
+            rollbackDesc: '即便在山顶，石头仍可能滚落。日复一日，永无止境。请再试一次。',
+            muteTitle: '静音 / 取消静音',
+            muteWhenMuted: '取消静音',
+            muteWhenUnmuted: '静音',
+            infoTitle: '显示或隐藏致谢信息',
+            langToggleLabel: '切换语言',
+            langToggleShowEn: 'EN',
+            langToggleShowZh: '中',
+            creditRepoPrefix: '本仓库：',
+            creditSourcePrefix: '创意来源：',
+            creditMusicPrefix: '音乐致谢：',
+        },
+    };
     /** Loop BGM file (same folder): bgm.aac — "Me and the Birds" - Duster (full instrumentals) */
     const LOOP_AUDIO_URL = 'bgm.aac';
     const MUSIC_CREDIT_DETAIL = 'Me and the Birds — Duster · bgm.aac';
@@ -317,20 +372,64 @@
     const creditMusicLine = document.getElementById('credit-music-line');
     const bgmCredit = document.getElementById('bgm-credit');
     const infoToggle = document.getElementById('info-toggle');
+    const langToggle = document.getElementById('lang-toggle');
+    const headerLine1 = document.getElementById('header-line-1');
+    const headerLine2 = document.getElementById('header-line-2');
+    const headerLine3 = document.getElementById('header-line-3');
+    const verifyBtn = document.getElementById('verify-btn');
+    const tryAgainBtn = document.getElementById('try-again-btn');
+
+    let currentLang = (function readStoredLang() {
+        try {
+            const s = localStorage.getItem(LANG_STORAGE_KEY);
+            if (s === 'zh' || s === 'en') return s;
+        } catch (e) { /* ignore */ }
+        return 'en';
+    })();
 
     bgAudio.src = LOOP_AUDIO_URL;
 
-    creditRepoLine.textContent = '';
-    creditRepoLine.appendChild(document.createTextNode('This repository: '));
-    const creditRepoAnchor = document.createElement('a');
-    creditRepoAnchor.href = THIS_REPO_URL;
-    creditRepoAnchor.target = '_blank';
-    creditRepoAnchor.rel = 'noopener noreferrer';
-    creditRepoAnchor.textContent = THIS_REPO_URL;
-    creditRepoLine.appendChild(creditRepoAnchor);
+    function t() {
+        return I18N[currentLang];
+    }
 
-    creditSourceLine.textContent = 'Original idea: ' + ORIGINAL_IDEA_URL;
-    creditMusicLine.textContent = 'Music credit: ' + MUSIC_CREDIT_DETAIL;
+    function refreshMuteTitle() {
+        const s = t();
+        muteToggle.title = bgAudio.muted ? s.muteWhenMuted : s.muteWhenUnmuted;
+    }
+
+    function rebuildCreditLines() {
+        const s = t();
+        creditRepoLine.textContent = '';
+        creditRepoLine.appendChild(document.createTextNode(s.creditRepoPrefix));
+        const creditRepoAnchor = document.createElement('a');
+        creditRepoAnchor.href = THIS_REPO_URL;
+        creditRepoAnchor.target = '_blank';
+        creditRepoAnchor.rel = 'noopener noreferrer';
+        creditRepoAnchor.textContent = THIS_REPO_URL;
+        creditRepoLine.appendChild(creditRepoAnchor);
+
+        creditSourceLine.textContent = s.creditSourcePrefix + ORIGINAL_IDEA_URL;
+        creditMusicLine.textContent = s.creditMusicPrefix + MUSIC_CREDIT_DETAIL;
+    }
+
+    function applyLanguage() {
+        document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+        const s = t();
+        headerLine1.textContent = s.headerLine1;
+        headerLine2.textContent = s.headerLine2;
+        headerLine3.textContent = s.headerLine3;
+        verifyBtn.textContent = s.verify;
+        tryAgainBtn.textContent = s.tryAgain;
+        infoToggle.title = s.infoTitle;
+        langToggle.title = s.langToggleLabel;
+        langToggle.setAttribute('aria-label', s.langToggleLabel);
+        langToggle.textContent = currentLang === 'en' ? s.langToggleShowZh : s.langToggleShowEn;
+        rebuildCreditLines();
+        refreshMuteTitle();
+    }
+
+    applyLanguage();
 
     function toggleCreditDetails() {
         if (bgmCredit.hasAttribute('hidden')) {
@@ -351,6 +450,26 @@
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             toggleCreditDetails();
+        }
+    });
+
+    function toggleUiLang() {
+        currentLang = currentLang === 'en' ? 'zh' : 'en';
+        try {
+            localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+        } catch (e) { /* ignore */ }
+        applyLanguage();
+    }
+
+    langToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleUiLang();
+    });
+
+    langToggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleUiLang();
         }
     });
 
@@ -462,7 +581,7 @@
     muteToggle.addEventListener('click', () => {
         bgAudio.muted = !bgAudio.muted;
         muteToggle.textContent = bgAudio.muted ? '🔇' : '🎧';
-        muteToggle.title = bgAudio.muted ? 'Unmute' : 'Mute';
+        refreshMuteTitle();
     });
 
     function handleDragOver(e) {
@@ -525,17 +644,16 @@
         if (rollbackTimer) cancelAnimationFrame(rollbackTimer);
         if (sliderValue > 95 && !isDragging) {
             if (Math.random() < VERIFY_ROLLBACK_CHANCE) {
-                showResult(
-                    "Verification rolled back",
-                    "Even at the summit, the boulder can still fall. Day after day, without end. Try again."
-                );
+                const s = t();
+                showResult(s.rollbackTitle, s.rollbackDesc);
                 overlay.classList.add('verify-roll-back-visible');
                 startVerifyRollbackRollAnimation();
             } else {
-                window.location.href = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+                window.location.href = currentLang === 'zh' ? SUCCESS_URL_ZH : SUCCESS_URL_EN;
             }
         } else {
-            showResult("Non-Sisyphus behavior detected", "Day after day, without end. You never reached the summit, or the boulder rolled back. You are not even a qualified Sisyphus, let alone a figure from myth.");
+            const s = t();
+            showResult(s.nonSisyphusTitle, s.nonSisyphusDesc);
         }
     }
 
